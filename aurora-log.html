@@ -1,0 +1,1317 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aurora Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@latest/dist/web/static/pretendard.css" />
+<style>
+  :root {
+    --bg-deep: #04141c;
+    --bg-mid: #071e26;
+    --bg-elevated: #0b2530;
+    --ink: #eaf6f4;
+    --ink-dim: #9db3ae;
+    --ink-faint: #5b716d;인
+    --line: rgba(234, 246, 244, 0.12);
+    --line-strong: rgba(234, 246, 244, 0.28);
+    --aurora-a: #5EC8D8;
+    --aurora-b: #A98FE0;
+
+    --e-calm: #5EC8D8;
+    --e-joy: #F2C572;
+    --e-peace: #8FD6A6;
+    --e-longing: #A98FE0;
+    --e-heavy: #6C86D1;
+    --e-restless: #E0876A;
+
+    --font-serif: 'Fraunces', Georgia, serif;
+    --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-deep);
+    color: var(--ink);
+    overflow: hidden;
+    font-family: var(--font-sans);
+  }
+
+  button {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--aurora-a);
+    outline-offset: 3px;
+  }
+
+  .app {
+    position: fixed;
+    inset: 0;
+  }
+
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60% 50% at 20% 15%, rgba(94, 200, 216, 0.10), transparent 70%),
+      radial-gradient(50% 45% at 85% 80%, rgba(169, 143, 224, 0.09), transparent 70%),
+      linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-deep) 100%);
+  }
+
+  /* ---------------- intro ---------------- */
+
+  .intro {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 550ms ease, transform 550ms ease;
+  }
+
+  .intro.leaving {
+    opacity: 0;
+    transform: scale(1.04);
+    pointer-events: none;
+  }
+
+  .intro.gone { display: none; }
+
+  .intro__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    text-align: center;
+  }
+
+  .intro__mark {
+    width: min(560px, 82vw);
+    height: auto;
+    overflow: visible;
+  }
+
+  .intro__outline {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 76px;
+    fill: none;
+    stroke: url(#auroraStroke);
+    stroke-width: 1.2;
+    clip-path: inset(0 100% 0 0);
+    animation: sweep 1.3s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+  }
+
+  .intro__fill {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 76px;
+    fill: url(#auroraStroke);
+    opacity: 0;
+    animation: fadein 900ms ease-out 1.5s forwards;
+  }
+
+  @keyframes sweep {
+    to { clip-path: inset(0 0 0 0); }
+  }
+
+  @keyframes fadein {
+    to { opacity: 1; }
+  }
+
+  .intro__tagline {
+    margin: 0;
+    font-size: 15px;
+    color: var(--ink-faint);
+    letter-spacing: 0.01em;
+    opacity: 0;
+    animation: rise 800ms ease-out 1.9s forwards;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .enter-btn {
+    margin-top: 8px;
+    padding: 11px 34px;
+    background: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    color: var(--ink);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0;
+    animation: rise 800ms ease-out 2.1s forwards;
+    transition: border-color 200ms ease, letter-spacing 200ms ease, color 200ms ease;
+  }
+
+  .enter-btn:hover, .enter-btn:focus-visible {
+    border-color: var(--aurora-a);
+    letter-spacing: 0.2em;
+    color: var(--aurora-a);
+  }
+
+  @media (max-width: 640px) {
+    .intro__outline, .intro__fill { font-size: 48px; }
+  }
+
+  /* ---------------- shared dolphin ---------------- */
+
+  .dolphin-glow {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    border-radius: 50%;
+    filter: blur(38px);
+    opacity: 0.55;
+    transition: background 500ms ease;
+    animation: pulse 4.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.08); opacity: 0.68; }
+  }
+
+  .dolphin-svg path {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 400ms ease;
+    filter: drop-shadow(0 0 10px currentColor);
+  }
+
+  /* ---------------- day view ---------------- */
+
+  .view-day {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transform-origin: 50% 50%;
+  }
+
+  .view-day.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .view-day.zoom-in {
+    animation: zoomIn 480ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .view-day.zoom-out {
+    animation: zoomOut 380ms cubic-bezier(0.64, 0, 0.78, 0) forwards;
+  }
+
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.2); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes zoomOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.2); }
+  }
+
+  .day-topbar {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 26px 24px 0;
+  }
+
+  .icon-btn {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease;
+  }
+
+  .icon-btn:hover { border-color: var(--line-strong); color: var(--ink); }
+
+  .day-date {
+    font-size: 14px;
+    color: var(--ink-dim);
+    letter-spacing: 0.02em;
+  }
+
+  .day-stage {
+    flex: 1;
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 26px;
+    padding: 20px 24px 40px;
+    overflow-y: auto;
+  }
+
+  .dolphin-frame {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    flex-shrink: 0;
+  }
+
+  .dolphin-svg {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  .emotion-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .emotion-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 160ms ease, border-color 160ms ease;
+  }
+
+  .emotion-dot:hover { transform: scale(1.08); }
+  .emotion-dot.selected { border-color: var(--ink); }
+
+  .emotion-label {
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-faint);
+    min-height: 18px;
+  }
+
+  .entry-box {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .entry-box textarea {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.7;
+    transition: border-color 160ms ease;
+  }
+
+  .entry-box textarea:focus { border-color: var(--aurora-a); outline: none; }
+  .entry-box textarea::placeholder { color: var(--ink-faint); }
+
+  .save-hint {
+    align-self: flex-end;
+    font-size: 12px;
+    color: var(--ink-faint);
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+
+  .save-hint.show { opacity: 1; }
+
+  /* ---------------- calendar view ---------------- */
+
+  .view-calendar {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 320ms ease;
+  }
+
+  .view-calendar.active { opacity: 1; pointer-events: auto; }
+
+  .cal-layout {
+    width: 100%;
+    max-width: 940px;
+    padding: 26px 24px 40px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 28px;
+    overflow-y: auto;
+  }
+
+  .cal-wrap {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+
+  .whale-sidebar {
+    width: 240px;
+    height: 480px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(60% 55% at 30% 20%, rgba(94, 200, 216, 0.10), transparent 70%),
+      radial-gradient(55% 50% at 75% 85%, rgba(169, 143, 224, 0.08), transparent 70%),
+      var(--bg-elevated);
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 200ms ease;
+  }
+
+  .whale-sidebar:hover,
+  .whale-sidebar:focus-visible {
+    border-color: var(--line-strong);
+  }
+
+  .whale-sidebar canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .whale-sidebar__label {
+    position: absolute;
+    left: 14px;
+    bottom: 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    pointer-events: none;
+  }
+
+  .whale-sidebar__enter {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+
+  .whale-sidebar:hover .whale-sidebar__enter,
+  .whale-sidebar:focus-visible .whale-sidebar__enter {
+    opacity: 1;
+  }
+
+  .whale-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(2, 6, 9, 0.6);
+    transition: opacity 260ms ease;
+  }
+
+  .whale-modal.open { opacity: 1; pointer-events: auto; }
+
+  .whale-modal iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  .whale-modal__close {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    z-index: 2;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(234, 246, 244, 0.25);
+    background: rgba(4, 10, 16, 0.5);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 160ms ease;
+  }
+
+  .whale-modal__close:hover { border-color: rgba(234, 246, 244, 0.6); }
+
+  @media (max-width: 900px) {
+    .cal-layout { flex-direction: column; align-items: center; }
+    .whale-sidebar { width: 100%; max-width: 640px; height: 220px; }
+  }
+
+  .cal-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .cal-month {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 22px;
+  }
+
+  .nav-arrow {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    width: 30px;
+    height: 30px;
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease;
+  }
+
+  .nav-arrow:hover { border-color: var(--line-strong); color: var(--ink); }
+
+  .cal-weekdays, .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+
+  .cal-weekdays span {
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+  }
+
+  .cal-cell {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg-elevated);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease;
+  }
+
+  .cal-cell:hover { border-color: var(--line-strong); }
+  .cal-cell.empty { visibility: hidden; pointer-events: none; }
+  .cal-cell.today {
+    border-color: var(--aurora-a);
+    box-shadow: 0 0 0 1px rgba(94, 200, 216, 0.5), 0 0 10px rgba(94, 200, 216, 0.35);
+  }
+
+  .cal-cell .date-num {
+    font-size: 11px;
+    color: var(--ink-faint);
+    position: absolute;
+    top: 4px;
+    left: 6px;
+  }
+
+  .cal-cell .mini-dolphin {
+    width: 60%;
+    height: 40%;
+  }
+
+  .cal-cell .mini-dolphin path {
+    stroke-width: 5;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="ambient" aria-hidden="true"></div>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="auroraStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#5EC8D8" />
+        <stop offset="55%" stop-color="#8FD6A6" />
+        <stop offset="100%" stop-color="#A98FE0" />
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="intro" id="intro">
+    <div class="intro__inner">
+      <svg class="intro__mark" viewBox="0 0 560 100">
+        <text x="50%" y="72" text-anchor="middle" class="intro__outline">Aurora Log</text>
+        <text x="50%" y="72" text-anchor="middle" class="intro__fill">Aurora Log</text>
+      </svg>
+      <p class="intro__tagline">오늘의 감정을 돌고래에 담아</p>
+      <button class="enter-btn" id="enterBtn">ENTER</button>
+    </div>
+  </div>
+
+  <section class="view-day" id="viewDay">
+    <div class="day-topbar">
+      <button class="icon-btn" id="toCalendarBtn">달력</button>
+      <span class="day-date" id="dayDateLabel"></span>
+      <span style="width:56px"></span>
+    </div>
+
+    <div class="day-stage" id="dayStage">
+      <div class="dolphin-frame">
+        <div class="dolphin-glow" id="dayGlow"></div>
+        <svg class="dolphin-svg" id="dayDolphin" viewBox="0 0 120 70">
+          <path d="M6,52 C16,58 26,46 34,32 C44,16 58,4 76,4 C90,4 100,10 108,18 M58,12 L64,1 L70,10 M0,58 L12,44" />
+        </svg>
+      </div>
+
+      <div>
+        <div class="emotion-row" id="emotionRow"></div>
+        <p class="emotion-label" id="emotionLabel">&nbsp;</p>
+      </div>
+
+      <div class="entry-box">
+        <textarea id="entryText" placeholder="오늘 하루는 어땠어"></textarea>
+        <span class="save-hint" id="saveHint">저장됨</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="view-calendar" id="viewCalendar">
+    <div class="cal-layout">
+      <div class="cal-wrap">
+        <div class="cal-topbar">
+          <div class="cal-nav">
+            <button class="nav-arrow" id="prevMonth">‹</button>
+            <span class="cal-month" id="calMonthLabel"></span>
+            <button class="nav-arrow" id="nextMonth">›</button>
+          </div>
+          <button class="icon-btn" id="toTodayBtn">오늘</button>
+        </div>
+
+        <div class="cal-weekdays">
+          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+
+      <button class="whale-sidebar" id="whaleSidebar" aria-label="고래와 지구본을 직접 움직여보기">
+        <span class="whale-sidebar__label">떠다니는 고래</span>
+        <span class="whale-sidebar__enter">들어가기</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="whale-modal" id="whaleModal">
+    <button class="whale-modal__close" id="whaleModalClose" aria-label="닫기">×</button>
+    <iframe id="whaleModalFrame" title="고래와 지구본" src="" loading="lazy"></iframe>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var EMOTIONS = [
+    { id: 'calm', label: '잔잔함', color: '#5EC8D8' },
+    { id: 'joy', label: '기쁨', color: '#F2C572' },
+    { id: 'peace', label: '평온', color: '#8FD6A6' },
+    { id: 'longing', label: '그리움', color: '#A98FE0' },
+    { id: 'heavy', label: '가라앉음', color: '#6C86D1' },
+    { id: 'restless', label: '일렁임', color: '#E0876A' }
+  ];
+  var DOLPHIN_PATH = 'M6,52 C16,58 26,46 34,32 C44,16 58,4 76,4 C90,4 100,10 108,18 M58,12 L64,1 L70,10 M0,58 L12,44';
+  var STORE_KEY = 'auroraLogEntries';
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function loadEntries() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function saveEntries(data) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  var entries = loadEntries();
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function isSameDay(a, b) { return dateKey(a) === dateKey(b); }
+  function addDays(d, delta) { var nd = new Date(d); nd.setDate(nd.getDate() + delta); return nd; }
+
+  var WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+  function formatLabel(d) {
+    return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + WEEKDAY_NAMES[d.getDay()] + '요일';
+  }
+
+  var today = new Date();
+  var currentDayDate = new Date(today);
+  var calViewYear = today.getFullYear();
+  var calViewMonth = today.getMonth();
+  var calCursorDate = new Date(today);
+
+  /* ---------- intro ---------- */
+
+  var intro = document.getElementById('intro');
+  var enterBtn = document.getElementById('enterBtn');
+
+  function enterApp() {
+    intro.classList.add('leaving');
+    setTimeout(function () {
+      intro.classList.add('gone');
+      openDay(currentDayDate, null);
+    }, reduceMotion ? 0 : 550);
+  }
+  enterBtn.addEventListener('click', enterApp);
+
+  /* ---------- day view ---------- */
+
+  var viewDay = document.getElementById('viewDay');
+  var viewCalendar = document.getElementById('viewCalendar');
+  var dayStage = document.getElementById('dayStage');
+  var dayDateLabel = document.getElementById('dayDateLabel');
+  var dayGlow = document.getElementById('dayGlow');
+  var dayDolphin = document.getElementById('dayDolphin');
+  var emotionRow = document.getElementById('emotionRow');
+  var emotionLabel = document.getElementById('emotionLabel');
+  var entryText = document.getElementById('entryText');
+  var saveHint = document.getElementById('saveHint');
+  var toCalendarBtn = document.getElementById('toCalendarBtn');
+  var toTodayBtn = document.getElementById('toTodayBtn');
+
+  EMOTIONS.forEach(function (em) {
+    var dot = document.createElement('button');
+    dot.className = 'emotion-dot';
+    dot.style.background = em.color;
+    dot.setAttribute('aria-label', em.label);
+    dot.dataset.id = em.id;
+    dot.addEventListener('click', function () {
+      selectEmotion(em.id);
+      persistCurrentDay();
+    });
+    dot.addEventListener('mouseenter', function () { emotionLabel.textContent = em.label; });
+    dot.addEventListener('mouseleave', function () { renderEmotionLabel(); });
+    emotionRow.appendChild(dot);
+  });
+
+  var currentEmotionId = null;
+
+  function emotionById(id) {
+    for (var i = 0; i < EMOTIONS.length; i++) if (EMOTIONS[i].id === id) return EMOTIONS[i];
+    return null;
+  }
+
+  function selectEmotion(id) {
+    currentEmotionId = id;
+    document.querySelectorAll('.emotion-dot').forEach(function (d) {
+      d.classList.toggle('selected', d.dataset.id === id);
+    });
+    var em = emotionById(id);
+    var color = em ? em.color : 'rgba(234,246,244,0.4)';
+    dayGlow.style.background = 'radial-gradient(circle, ' + color + ' 0%, transparent 70%)';
+    dayDolphin.style.color = color;
+    dayDolphin.querySelectorAll('path').forEach(function (p) { p.style.stroke = color; });
+    renderEmotionLabel();
+    window.__auroraMood = id;
+  }
+
+  function renderEmotionLabel() {
+    var em = emotionById(currentEmotionId);
+    emotionLabel.textContent = em ? em.label : '오늘의 기분을 골라봐';
+  }
+
+  var saveHintTimer = null;
+  function persistCurrentDay() {
+    var key = dateKey(currentDayDate);
+    entries[key] = { emotion: currentEmotionId, text: entryText.value };
+    saveEntries(entries);
+    saveHint.classList.add('show');
+    clearTimeout(saveHintTimer);
+    saveHintTimer = setTimeout(function () { saveHint.classList.remove('show'); }, 1400);
+  }
+
+  entryText.addEventListener('input', function () {
+    clearTimeout(entryText._t);
+    entryText._t = setTimeout(persistCurrentDay, 500);
+  });
+
+  function loadDayIntoView(date) {
+    currentDayDate = new Date(date);
+    dayDateLabel.textContent = formatLabel(date);
+    var key = dateKey(date);
+    var data = entries[key] || { emotion: null, text: '' };
+    currentEmotionId = data.emotion;
+    entryText.value = data.text || '';
+    document.querySelectorAll('.emotion-dot').forEach(function (d) {
+      d.classList.toggle('selected', d.dataset.id === data.emotion);
+    });
+    if (data.emotion) selectEmotion(data.emotion);
+    else {
+      dayGlow.style.background = 'radial-gradient(circle, rgba(234,246,244,0.25) 0%, transparent 70%)';
+      dayDolphin.querySelectorAll('path').forEach(function (p) { p.style.stroke = 'var(--ink-dim)'; });
+      renderEmotionLabel();
+      window.__auroraMood = null;
+    }
+  }
+
+  function shiftDay(delta) {
+    var newDate = addDays(currentDayDate, delta);
+    if (reduceMotion) {
+      loadDayIntoView(newDate);
+      return;
+    }
+    dayStage.style.transition = 'opacity 140ms ease';
+    dayStage.style.opacity = '0.15';
+    setTimeout(function () {
+      loadDayIntoView(newDate);
+      dayStage.style.opacity = '1';
+    }, 140);
+  }
+
+  function openDay(date, originEl) {
+    loadDayIntoView(date);
+    viewCalendar.classList.remove('active');
+    viewDay.classList.remove('zoom-out');
+    viewDay.classList.add('active');
+
+    if (originEl && !reduceMotion) {
+      var r = originEl.getBoundingClientRect();
+      var ox = ((r.left + r.width / 2) / window.innerWidth) * 100;
+      var oy = ((r.top + r.height / 2) / window.innerHeight) * 100;
+      viewDay.style.transformOrigin = ox + '% ' + oy + '%';
+      viewDay.classList.remove('zoom-in');
+      void viewDay.offsetWidth;
+      viewDay.classList.add('zoom-in');
+    } else {
+      viewDay.style.transformOrigin = '50% 50%';
+      viewDay.style.opacity = 1;
+      viewDay.style.transform = 'scale(1)';
+    }
+  }
+
+  function closeDayToCalendar() {
+    calCursorDate = new Date(currentDayDate);
+    calViewYear = calCursorDate.getFullYear();
+    calViewMonth = calCursorDate.getMonth();
+
+    if (!reduceMotion) {
+      viewDay.classList.remove('zoom-in');
+      viewDay.classList.add('zoom-out');
+      setTimeout(function () {
+        viewDay.classList.remove('active', 'zoom-out');
+        viewDay.style.opacity = '';
+        viewDay.style.transform = '';
+        viewCalendar.classList.add('active');
+        renderCalendar();
+        focusCalCursor();
+      }, 380);
+    } else {
+      viewDay.classList.remove('active');
+      viewDay.style.opacity = '';
+      viewDay.style.transform = '';
+      viewCalendar.classList.add('active');
+      renderCalendar();
+      focusCalCursor();
+    }
+  }
+
+  function focusCalCursor() {
+    var key = dateKey(calCursorDate);
+    var cell = calGrid.querySelector('[data-key="' + key + '"]');
+    if (cell) cell.focus();
+  }
+
+  function moveCalCursor(delta) {
+    calCursorDate = addDays(calCursorDate, delta);
+    if (calCursorDate.getFullYear() !== calViewYear || calCursorDate.getMonth() !== calViewMonth) {
+      calViewYear = calCursorDate.getFullYear();
+      calViewMonth = calCursorDate.getMonth();
+      renderCalendar();
+    }
+    focusCalCursor();
+  }
+
+  toCalendarBtn.addEventListener('click', closeDayToCalendar);
+  toTodayBtn.addEventListener('click', function () {
+    openDay(new Date(), null);
+  });
+
+  /* ---------- calendar view ---------- */
+
+  var calMonthLabel = document.getElementById('calMonthLabel');
+  var calGrid = document.getElementById('calGrid');
+  var prevMonthBtn = document.getElementById('prevMonth');
+  var nextMonthBtn = document.getElementById('nextMonth');
+
+  function miniDolphinSVG(color) {
+    return '<svg class="mini-dolphin" viewBox="0 0 120 70" style="color:' + color + '">' +
+      '<path d="' + DOLPHIN_PATH + '" style="stroke:' + color + '" /></svg>';
+  }
+
+  function renderCalendar() {
+    calMonthLabel.textContent = calViewYear + '년 ' + (calViewMonth + 1) + '월';
+    calGrid.innerHTML = '';
+
+    var firstDay = new Date(calViewYear, calViewMonth, 1);
+    var daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+    var startOffset = firstDay.getDay();
+
+    for (var i = 0; i < startOffset; i++) {
+      var blank = document.createElement('div');
+      blank.className = 'cal-cell empty';
+      calGrid.appendChild(blank);
+    }
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var cellDate = new Date(calViewYear, calViewMonth, d);
+      var key = dateKey(cellDate);
+      var data = entries[key];
+      var color = data && data.emotion ? (emotionById(data.emotion) || {}).color : null;
+
+      var cell = document.createElement('button');
+      cell.className = 'cal-cell';
+      cell.dataset.key = key;
+      if (isSameDay(cellDate, today)) cell.classList.add('today');
+
+      var num = document.createElement('span');
+      num.className = 'date-num';
+      num.textContent = d;
+      cell.appendChild(num);
+
+      var wrap = document.createElement('div');
+      wrap.innerHTML = miniDolphinSVG(color || 'rgba(234,246,244,0.18)');
+      cell.appendChild(wrap.firstChild);
+
+      cell.addEventListener('click', function (dt) {
+        return function () { openDay(dt, this); };
+      }(cellDate));
+
+      calGrid.appendChild(cell);
+    }
+  }
+
+  prevMonthBtn.addEventListener('click', function () {
+    calViewMonth--;
+    if (calViewMonth < 0) { calViewMonth = 11; calViewYear--; }
+    renderCalendar();
+  });
+  nextMonthBtn.addEventListener('click', function () {
+    calViewMonth++;
+    if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
+    renderCalendar();
+  });
+
+  renderCalendar();
+
+  /* ---------- 고래·지구본 모달 ---------- */
+
+  var whaleSidebar = document.getElementById('whaleSidebar');
+  var whaleModal = document.getElementById('whaleModal');
+  var whaleModalClose = document.getElementById('whaleModalClose');
+  var whaleModalFrame = document.getElementById('whaleModalFrame');
+
+  function openWhaleModal() {
+    whaleModalFrame.src = '../whale-world.html';
+    whaleModal.classList.add('open');
+    whaleModalFrame.onload = function () {
+      whaleModalFrame.contentWindow.focus();
+    };
+  }
+
+  function closeWhaleModal() {
+    whaleModal.classList.remove('open');
+    setTimeout(function () { whaleModalFrame.src = ''; }, 280);
+    whaleSidebar.focus();
+  }
+
+  whaleSidebar.addEventListener('click', openWhaleModal);
+  whaleModalClose.addEventListener('click', closeWhaleModal);
+
+  /* ---------- keyboard ---------- */
+
+  function exitToIntro() {
+    viewDay.classList.remove('active', 'zoom-in', 'zoom-out');
+    viewDay.style.opacity = '';
+    viewDay.style.transform = '';
+    viewCalendar.classList.remove('active');
+    intro.classList.remove('leaving', 'gone');
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (whaleModal.classList.contains('open')) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeWhaleModal();
+      }
+      return;
+    }
+
+    var introVisible = !intro.classList.contains('gone') && !intro.classList.contains('leaving');
+
+    if (e.key === 'Escape' && !introVisible) {
+      e.preventDefault();
+      exitToIntro();
+      return;
+    }
+
+    if (introVisible) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        enterApp();
+      }
+      return;
+    }
+
+    var isTextField = e.target === entryText || e.target.tagName === 'INPUT';
+
+    if (viewDay.classList.contains('active') && !isTextField) {
+      if (e.key === ' ') {
+        e.preventDefault();
+        closeDayToCalendar();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        shiftDay(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        shiftDay(1);
+      }
+      return;
+    }
+
+    if (viewCalendar.classList.contains('active')) {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        moveCalCursor(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        moveCalCursor(1);
+      }
+    }
+  });
+})();
+</script>
+
+<script>
+(function () {
+  if (typeof THREE === 'undefined') return;
+
+  var container = document.getElementById('whaleSidebar');
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 100);
+  camera.position.set(0, 0.3, 7);
+  camera.lookAt(0, 0, 0);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0x9db3ae, 0.9));
+  var key = new THREE.DirectionalLight(0x5EC8D8, 0.9);
+  key.position.set(3, 4, 5);
+  scene.add(key);
+  var rim = new THREE.DirectionalLight(0xA98FE0, 0.5);
+  rim.position.set(-4, -2, -3);
+  scene.add(rim);
+
+  var bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x18414c,
+    emissive: 0x2c5a66,
+    emissiveIntensity: 0.35,
+    roughness: 0.55,
+    metalness: 0.1,
+    flatShading: true
+  });
+  var finMat = new THREE.MeshStandardMaterial({
+    color: 0x123038,
+    emissive: 0x1c4750,
+    emissiveIntensity: 0.3,
+    roughness: 0.6,
+    flatShading: true,
+    side: THREE.DoubleSide
+  });
+
+  var whale = new THREE.Group();
+
+  var body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), bodyMat);
+  body.scale.set(1.9, 1, 1.05);
+  whale.add(body);
+
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 8, 6), bodyMat);
+  head.position.set(1.55, 0.05, 0);
+  head.scale.set(1, 0.9, 0.95);
+  whale.add(head);
+
+  var tailStalk = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 6), bodyMat);
+  tailStalk.position.set(-1.85, 0, 0);
+  tailStalk.rotation.z = Math.PI / 2;
+  whale.add(tailStalk);
+
+  var flukeGroup = new THREE.Group();
+  flukeGroup.position.set(-2.35, 0, 0);
+  whale.add(flukeGroup);
+
+  function makeFluke(sign) {
+    var fluke = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.16, 4), finMat);
+    fluke.rotation.z = Math.PI / 2;
+    fluke.rotation.y = sign * 0.55;
+    fluke.position.z = sign * 0.28;
+    return fluke;
+  }
+  flukeGroup.add(makeFluke(1));
+  flukeGroup.add(makeFluke(-1));
+
+  var dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.55, 4), finMat);
+  dorsal.position.set(-0.2, 0.95, 0);
+  dorsal.rotation.x = -0.25;
+  whale.add(dorsal);
+
+  function makePectoral(sign) {
+    var fin = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.85, 4), finMat);
+    fin.position.set(0.55, -0.55, sign * 0.75);
+    fin.rotation.z = Math.PI * 0.42;
+    fin.rotation.x = sign * 0.5;
+    return fin;
+  }
+  var pecL = makePectoral(1);
+  var pecR = makePectoral(-1);
+  whale.add(pecL);
+  whale.add(pecR);
+
+  scene.add(whale);
+
+  var bubbles = [];
+  var bubbleGeo = new THREE.SphereGeometry(1, 6, 6);
+  for (var i = 0; i < 14; i++) {
+    var mat = new THREE.MeshBasicMaterial({ color: 0xdff6ff, transparent: true, opacity: 0.18 + Math.random() * 0.18 });
+    var b = new THREE.Mesh(bubbleGeo, mat);
+    var scale = 0.03 + Math.random() * 0.06;
+    b.scale.setScalar(scale);
+    b.position.set((Math.random() - 0.5) * 4.4, -2.6 - Math.random() * 3, (Math.random() - 0.5) * 2);
+    b.userData.speed = 0.15 + Math.random() * 0.25;
+    b.userData.drift = Math.random() * Math.PI * 2;
+    scene.add(b);
+    bubbles.push(b);
+  }
+
+  /* ---- 작은 물고기 무리 ---- */
+
+  var fishMat = new THREE.MeshStandardMaterial({
+    color: 0xbfe9e0,
+    emissive: 0x4fa9a0,
+    emissiveIntensity: 0.4,
+    roughness: 0.5,
+    flatShading: true
+  });
+
+  function makeFish() {
+    var f = new THREE.Group();
+    var body = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 5), fishMat);
+    body.rotation.z = -Math.PI / 2;
+    f.add(body);
+    var tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.1, 4), fishMat);
+    tail.position.x = -0.19;
+    tail.rotation.z = Math.PI / 2;
+    f.add(tail);
+    f.userData.tail = tail;
+    return f;
+  }
+
+  var FISH_COUNT = 9;
+  var fishes = [];
+  for (var fi = 0; fi < FISH_COUNT; fi++) {
+    var fish = makeFish();
+    fish.userData.phase = Math.random() * Math.PI * 2;
+    fish.userData.speed = 0.6 + Math.random() * 0.5;
+    fish.userData.radius = 0.5 + Math.random() * 0.6;
+    fish.userData.height = (Math.random() - 0.5) * 1.1;
+    fish.userData.tilt = Math.random() * Math.PI * 2;
+    fish.userData.lag = 0.3 + Math.random() * 1.4;
+    scene.add(fish);
+    fishes.push(fish);
+  }
+
+  /* ---- 기분(mood)에 따른 변주 ---- */
+
+  var MOODS = {
+    calm:     { speed: 0.28, amp: 1.00, turb: 0.15, fishSpread: 1.15, fishSpeed: 1.00, yBias:  0.00, tint: 0x5EC8D8 },
+    joy:      { speed: 0.50, amp: 1.35, turb: 0.22, fishSpread: 1.55, fishSpeed: 1.55, yBias:  0.15, tint: 0xF2C572 },
+    peace:    { speed: 0.15, amp: 0.65, turb: 0.06, fishSpread: 0.95, fishSpeed: 0.65, yBias:  0.05, tint: 0x8FD6A6 },
+    longing:  { speed: 0.19, amp: 0.85, turb: 0.10, fishSpread: 0.75, fishSpeed: 0.80, yBias: -0.05, tint: 0xA98FE0 },
+    heavy:    { speed: 0.15, amp: 0.55, turb: 0.08, fishSpread: 0.65, fishSpeed: 0.60, yBias: -0.35, tint: 0x6C86D1 },
+    restless: { speed: 0.55, amp: 1.15, turb: 0.38, fishSpread: 0.85, fishSpeed: 1.45, yBias:  0.05, tint: 0xE0876A },
+    _default: { speed: 0.28, amp: 1.00, turb: 0.15, fishSpread: 1.15, fishSpeed: 1.00, yBias:  0.00, tint: 0x5EC8D8 }
+  };
+
+  var mood = Object.assign({}, MOODS._default);
+
+  function targetMood() {
+    var id = window.__auroraMood;
+    return MOODS[id] || MOODS._default;
+  }
+
+  function lerpMood(dt) {
+    var target = targetMood();
+    var s = Math.min(dt * 1.4, 1);
+    mood.speed = mood.speed + (target.speed - mood.speed) * s;
+    mood.amp = mood.amp + (target.amp - mood.amp) * s;
+    mood.turb = mood.turb + (target.turb - mood.turb) * s;
+    mood.fishSpread = mood.fishSpread + (target.fishSpread - mood.fishSpread) * s;
+    mood.fishSpeed = mood.fishSpeed + (target.fishSpeed - mood.fishSpeed) * s;
+    mood.yBias = mood.yBias + (target.yBias - mood.yBias) * s;
+    mood.tint = target.tint;
+  }
+
+  function pathPosition(t) {
+    var ct = t * (mood.speed / 0.28);
+    var stroke = Math.sin(ct * 1.35) * 0.16 * mood.amp;
+    var ripple = Math.sin(ct * 3.4) * 0.04 * mood.turb;
+    return new THREE.Vector3(
+      Math.sin(ct * 0.28) * 2.1 * mood.amp,
+      stroke + ripple + mood.yBias,
+      Math.cos(ct * 0.28) * 1.1 * mood.amp
+    );
+  }
+
+  function resize() {
+    var w = container.clientWidth, h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  window.addEventListener('resize', resize);
+
+  var clock = new THREE.Clock();
+
+  function renderStatic() {
+    whale.position.copy(pathPosition(0));
+    renderer.render(scene, camera);
+  }
+
+  if (reduceMotion) {
+    renderStatic();
+    return;
+  }
+
+  function animate() {
+    var dt = clock.getDelta();
+    var t = clock.getElapsedTime();
+
+    lerpMood(dt);
+
+    var tailFreq = 4.2 * (0.7 + mood.speed);
+    var cur = pathPosition(t);
+    var ahead = pathPosition(t + 0.35);
+    var beyond = pathPosition(t + 0.7);
+
+    var headingNow = Math.atan2(ahead.z - cur.z, ahead.x - cur.x);
+    var headingNext = Math.atan2(beyond.z - ahead.z, beyond.x - ahead.x);
+    var turn = Math.atan2(Math.sin(headingNext - headingNow), Math.cos(headingNext - headingNow));
+
+    whale.position.copy(cur);
+    whale.lookAt(ahead);
+    whale.rotateY(Math.PI / 2);
+    whale.rotation.z += -turn * 1.8 + Math.sin(t * tailFreq) * 0.03;
+
+    flukeGroup.rotation.y = Math.sin(t * tailFreq) * (0.4 + mood.speed * 0.3);
+    pecL.rotation.x = 0.5 + Math.sin(t * 2.2 * mood.speed / 0.28) * 0.15;
+    pecR.rotation.x = -0.5 - Math.sin(t * 2.2 * mood.speed / 0.28 + 0.4) * 0.15;
+
+    key.color.lerp(new THREE.Color(mood.tint), 0.02);
+    bodyMat.emissive.lerp(new THREE.Color(mood.tint), 0.01);
+
+    fishes.forEach(function (fish) {
+      var ft = t * fish.userData.speed * mood.fishSpeed + fish.userData.phase;
+      var spread = fish.userData.radius * mood.fishSpread;
+      var yWave = Math.sin(ft * 1.3) * 0.05 * mood.fishSpread;
+      var target = new THREE.Vector3(
+        cur.x + Math.cos(ft) * spread,
+        cur.y + fish.userData.height * mood.fishSpread * 0.5 + yWave,
+        cur.z + Math.sin(ft) * spread * 0.9
+      );
+      fish.position.lerp(target, Math.min(dt * 3.5, 1));
+      var fahead = new THREE.Vector3(
+        cur.x + Math.cos(ft + 0.3) * spread,
+        cur.y + fish.userData.height * mood.fishSpread * 0.5 + Math.sin((ft + 0.3) * 1.3) * 0.05 * mood.fishSpread,
+        cur.z + Math.sin(ft + 0.3) * spread * 0.9
+      );
+      fish.lookAt(fahead);
+      fish.userData.tail.rotation.y = Math.sin(t * 9 * mood.fishSpeed + fish.userData.lag) * 0.6;
+    });
+
+    bubbles.forEach(function (b) {
+      b.position.y += b.userData.speed * 0.016 * (0.7 + mood.speed);
+      b.position.x += Math.sin(t * 0.6 + b.userData.drift) * 0.002;
+      if (b.position.y > 2.8) {
+        b.position.y = -2.8;
+        b.position.x = (Math.random() - 0.5) * 4.4;
+      }
+    });
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+</script>
+
+</body>
+</html>
