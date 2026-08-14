@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aurora Log — 유영</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #eaf6f4;
+    --ink-dim: #9db3ae;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #040814; color: var(--ink); overflow: hidden;
+    font-family: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  canvas { display: block; }
+
+  .hud {
+    position: fixed; z-index: 5; pointer-events: none;
+  }
+  .hud__title {
+    top: 20px; left: 24px;
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    opacity: 0.85;
+  }
+  .hud__hint {
+    bottom: 22px; left: 24px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--ink-dim);
+    letter-spacing: 0.01em;
+    background: rgba(4, 10, 16, 0.5);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(234, 246, 244, 0.1);
+  }
+  .hud__hint b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="hud hud__title">Aurora Log · 유영</div>
+<div class="hud hud__hint">
+  <b>W / ↑</b> 전진&nbsp;&nbsp;<b>S / ↓</b> 감속·후진<br />
+  <b>A / ←</b> 좌회전&nbsp;&nbsp;<b>D / →</b> 우회전<br />
+  <b>Space</b> 상승&nbsp;&nbsp;<b>Shift</b> 하강
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var PLANET_RADIUS = 16;
+  var PLANET_CENTER = new THREE.Vector3(0, -2, 0);
+  var CEILING_Y = 46;
+  var ORBIT_MAX = 40;
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x040814);
+  scene.fog = new THREE.FogExp2(0x040a14, 0.009);
+
+  var camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 400);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  document.body.appendChild(renderer.domElement);
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ---------- 별이 흐르는 물속 하늘 ---------- */
+
+  function makeStars(count, radiusMin, radiusMax, size, color, opacity) {
+    var positions = new Float32Array(count * 3);
+    for (var i = 0; i < count; i++) {
+      var r = radiusMin + Math.random() * (radiusMax - radiusMin);
+      var theta = Math.random() * Math.PI * 2;
+      var phi = Math.acos(Math.random() * 2 - 1);
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) * 0.6 + 8;
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    var mat = new THREE.PointsMaterial({ color: color, size: size, transparent: true, opacity: opacity, sizeAttenuation: true });
+    return new THREE.Points(geo, mat);
+  }
+  var starsNear = makeStars(1800, 34, 150, 0.4, 0xdff6ff, 0.85);
+  var starsFar = makeStars(650, 24, 120, 0.75, 0x9fd8ff, 0.5);
+  scene.add(starsNear);
+  scene.add(starsFar);
+
+  var ambientLight = new THREE.AmbientLight(0x9db3ae, 0.7);
+  scene.add(ambientLight);
+  var moon = new THREE.DirectionalLight(0x8fd0ff, 0.4);
+  moon.position.set(-10, 30, -10);
+  scene.add(moon);
+
+  /* ---------- 실제 시간에 맞춰 뜨고 지는 해 ---------- */
+
+  var sunOrbitRadius = ORBIT_MAX + 50;
+  var sunMat = new THREE.MeshBasicMaterial({ color: 0xfff2c4 });
+  var sunMesh = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 16), sunMat);
+  var sunGlowMat = new THREE.MeshBasicMaterial({ color: 0xffcf6b, transparent: true, opacity: 0.35 });
+  var sunGlow = new THREE.Mesh(new THREE.SphereGeometry(5.4, 16, 16), sunGlowMat);
+  sunMesh.add(sunGlow);
+  scene.add(sunMesh);
+
+  var sunTarget = new THREE.Object3D();
+  sunTarget.position.copy(PLANET_CENTER);
+  scene.add(sunTarget);
+  var sunLight = new THREE.DirectionalLight(0xfff0d0, 1.2);
+  sunLight.target = sunTarget;
+  scene.add(sunLight);
+
+  var SKY_DAY = new THREE.Color(0xaee4f7);
+  var SKY_NIGHT = new THREE.Color(0x040814);
+  var FOG_DAY = new THREE.Color(0xdff3fb);
+  var FOG_NIGHT = new THREE.Color(0x040a14);
+  var currentDayFactor = 0;
+
+  function updateSun() {
+    var now = new Date();
+    var hourFrac = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+    var angle = (hourFrac / 24) * Math.PI * 2 - Math.PI / 2;
+    var sunPos = new THREE.Vector3(
+      PLANET_CENTER.x + Math.cos(angle) * sunOrbitRadius,
+      PLANET_CENTER.y + Math.sin(angle) * sunOrbitRadius * 0.85,
+      PLANET_CENTER.z + Math.sin(angle) * sunOrbitRadius * 0.4
+    );
+    sunMesh.position.copy(sunPos);
+    sunLight.position.copy(sunPos);
+
+    var altitude = Math.sin(angle);
+    var dayFactor = clamp((altitude + 0.2) / 0.35, 0, 1);
+    var horizonMix = 1 - clamp(Math.abs(altitude) * 3, 0, 1);
+    sunLight.intensity = 0.08 + dayFactor * 1.35;
+    sunMesh.visible = altitude > -0.25;
+    sunMat.color.setHSL(0.13 - horizonMix * 0.05, 0.9, 0.6 + dayFactor * 0.15);
+    sunGlowMat.opacity = 0.15 + dayFactor * 0.3;
+    sunLight.color.setHSL(0.12 - horizonMix * 0.05, 0.7, 0.55 + dayFactor * 0.3);
+    ambientLight.intensity = 0.4 + dayFactor * 0.5;
+    moon.intensity = 0.42 * (1 - dayFactor * 0.75);
+
+    scene.background.copy(SKY_NIGHT).lerp(SKY_DAY, dayFactor);
+    scene.fog.color.copy(FOG_NIGHT).lerp(FOG_DAY, dayFactor);
+    starsNear.material.opacity = 0.85 * (1 - dayFactor);
+    starsFar.material.opacity = 0.5 * (1 - dayFactor);
+    currentDayFactor = dayFactor;
+  }
+  updateSun();
+
+  /* ---------- 라푼젤 마을 지구본 ---------- */
+
+  var ROTATE_SPEED = 0.045;
+
+  var planetGroup = new THREE.Group();
+  planetGroup.position.copy(PLANET_CENTER);
+  scene.add(planetGroup);
+
+  var groundMat = new THREE.MeshStandardMaterial({ color: 0x6fc98a, roughness: 0.9, flatShading: true });
+  var ground = new THREE.Mesh(new THREE.SphereGeometry(PLANET_RADIUS, 40, 30), groundMat);
+  planetGroup.add(ground);
+
+  function sphereNormal(theta, phi) {
+    return new THREE.Vector3(
+      Math.sin(theta) * Math.cos(phi),
+      Math.cos(theta),
+      Math.sin(theta) * Math.sin(phi)
+    );
+  }
+
+  function placeOnSphere(obj, theta, phi) {
+    var normal = sphereNormal(theta, phi);
+    obj.position.copy(normal).multiplyScalar(PLANET_RADIUS);
+    obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    planetGroup.add(obj);
+    return obj;
+  }
+
+  function placeFlatOnSphere(obj, theta, phi) {
+    var normal = sphereNormal(theta, phi);
+    obj.position.copy(normal).multiplyScalar(PLANET_RADIUS * 1.003);
+    obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    planetGroup.add(obj);
+    return obj;
+  }
+
+  function fibonacciSphere(samples) {
+    var points = [];
+    var offset = 2 / samples;
+    var increment = Math.PI * (3 - Math.sqrt(5));
+    for (var i = 0; i < samples; i++) {
+      var y = (i * offset) - 1 + offset / 2;
+      var r = Math.sqrt(Math.max(0, 1 - y * y));
+      var phi = i * increment;
+      var x = Math.cos(phi) * r;
+      var z = Math.sin(phi) * r;
+      points.push({ theta: Math.acos(clamp(y, -1, 1)), phi: Math.atan2(z, x) });
+    }
+    return points;
+  }
+
+  function angularDist(a, b) {
+    return sphereNormal(a.theta, a.phi).angleTo(sphereNormal(b.theta, b.phi));
+  }
+
+  var HOUSE_COLORS = [0xb4553f, 0xc98a4b, 0x4f7a6b, 0x5a6f9e, 0x7a5a8f, 0xc9a24b, 0xd66a8e, 0x3f8f8a, 0xe0955a, 0x6a4f9e, 0x4f9e6a, 0xd94f4f];
+  var ROOF_COLORS = [0xf3f0e6, 0xb24a3d, 0x3f5c86, 0xe6c15a, 0xead9c0];
+  var WINDOW_COLORS = [0xffcf6b, 0xffe3a0, 0xffb98a];
+  var VILLAGE_SCALE = 0.6;
+
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function makeHouse(colorIdx, big) {
+    var g = new THREE.Group();
+    var scale = big ? 1.35 : 0.95 + Math.random() * 0.3;
+
+    var bodyMat = new THREE.MeshStandardMaterial({ color: HOUSE_COLORS[colorIdx % HOUSE_COLORS.length], roughness: 0.85, flatShading: true });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(1.4 * scale, 1.1 * scale, 1.2 * scale), bodyMat);
+    body.position.y = 0.55 * scale;
+    g.add(body);
+
+    var roofMat = new THREE.MeshStandardMaterial({ color: pick(ROOF_COLORS), roughness: 0.7, flatShading: true });
+    var roof = new THREE.Mesh(new THREE.ConeGeometry(1.05 * scale, 0.85 * scale, 4), roofMat);
+    roof.position.y = 1.5 * scale;
+    roof.rotation.y = Math.PI / 4;
+    g.add(roof);
+
+    var winColor = pick(WINDOW_COLORS);
+    var winMat = new THREE.MeshStandardMaterial({ color: winColor, emissive: winColor, emissiveIntensity: 1.2 });
+    var win = new THREE.Mesh(new THREE.PlaneGeometry(0.26 * scale, 0.26 * scale), winMat);
+    win.position.set(0, 0.6 * scale, 0.61 * scale);
+    g.add(win);
+    var win2 = win.clone();
+    win2.position.x = -0.4 * scale;
+    g.add(win2);
+
+    g.rotation.y = Math.random() * Math.PI * 2;
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  function makeStreetlamp() {
+    var g = new THREE.Group();
+    var poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2f2c, roughness: 0.7 });
+    var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.4, 6), poleMat);
+    pole.position.y = 0.7;
+    g.add(pole);
+
+    var bulbMat = new THREE.MeshStandardMaterial({ color: 0xffe9b0, emissive: 0xffcf6b, emissiveIntensity: 1.4 });
+    var bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), bulbMat);
+    bulb.position.y = 1.42;
+    g.add(bulb);
+
+    var light = new THREE.PointLight(0xffcf6b, 0.9, 5.5);
+    light.position.y = 1.42;
+    g.add(light);
+
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  function makeTree() {
+    var g = new THREE.Group();
+    var trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 0.9 });
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.5, 6), trunkMat);
+    trunk.position.y = 0.25;
+    g.add(trunk);
+
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x24462f, roughness: 0.85, flatShading: true });
+    for (var i = 0; i < 3; i++) {
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(0.55 - i * 0.13, 0.6, 7), leafMat);
+      cone.position.y = 0.65 + i * 0.42;
+      g.add(cone);
+    }
+
+    var dotMat = new THREE.MeshStandardMaterial({ color: 0xfff3d0, emissive: 0xfff0c0, emissiveIntensity: 1.3 });
+    for (var d = 0; d < 4; d++) {
+      var dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dotMat);
+      var ang = Math.random() * Math.PI * 2;
+      var rad = 0.25 + Math.random() * 0.3;
+      dot.position.set(Math.cos(ang) * rad, 0.7 + Math.random() * 1.1, Math.sin(ang) * rad);
+      g.add(dot);
+    }
+
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  function makeMountain(scale) {
+    var g = new THREE.Group();
+    var rockMat = new THREE.MeshStandardMaterial({ color: 0x9b8874, roughness: 0.9, flatShading: true });
+    var snowMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f2, roughness: 0.8, flatShading: true });
+    var peaks = [
+      { r: 1.3, h: 3.2, x: 0, z: 0 },
+      { r: 0.85, h: 2.1, x: 0.9, z: 0.5 },
+      { r: 0.7, h: 1.7, x: -0.8, z: -0.4 }
+    ];
+    peaks.forEach(function (p) {
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(p.r * scale, p.h * scale, 6), rockMat);
+      cone.position.set(p.x * scale, p.h * scale * 0.5, p.z * scale);
+      g.add(cone);
+      var cap = new THREE.Mesh(new THREE.ConeGeometry(p.r * scale * 0.4, p.h * scale * 0.3, 6), snowMat);
+      cap.position.set(p.x * scale, p.h * scale * 0.87, p.z * scale);
+      g.add(cap);
+    });
+    return g;
+  }
+
+  function makeLake(angularRadius) {
+    var flatR = PLANET_RADIUS * Math.sin(angularRadius) * 1.1;
+    var mat = new THREE.MeshStandardMaterial({ color: 0x2f7fb0, emissive: 0x1c4d6e, emissiveIntensity: 0.3, roughness: 0.2, metalness: 0.15, transparent: true, opacity: 0.92 });
+    return new THREE.Mesh(new THREE.CircleGeometry(flatR, 28), mat);
+  }
+
+  function makeOcean(angularRadius) {
+    var mat = new THREE.MeshStandardMaterial({
+      color: 0x1c6a94, emissive: 0x0d3a56, emissiveIntensity: 0.25,
+      roughness: 0.25, metalness: 0.12, transparent: true, opacity: 0.95
+    });
+    return new THREE.Mesh(new THREE.SphereGeometry(PLANET_RADIUS * 1.004, 40, 24, 0, Math.PI * 2, 0, angularRadius), mat);
+  }
+
+  function placeCapOnSphere(obj, theta, phi) {
+    obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sphereNormal(theta, phi));
+    planetGroup.add(obj);
+    return obj;
+  }
+
+  function makeJungleTree() {
+    var g = new THREE.Group();
+    var trunkMat = new THREE.MeshStandardMaterial({ color: 0x3f2e1f, roughness: 0.9 });
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 0.9, 6), trunkMat);
+    trunk.position.y = 0.45;
+    g.add(trunk);
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x1f6e35, roughness: 0.8, flatShading: true });
+    for (var i = 0; i < 4; i++) {
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(0.85 - i * 0.15, 0.75, 8), leafMat);
+      cone.position.y = 1.0 + i * 0.5;
+      g.add(cone);
+    }
+    g.rotation.y = Math.random() * Math.PI * 2;
+    g.scale.setScalar(VILLAGE_SCALE * 1.5);
+    return g;
+  }
+
+  function makeFern() {
+    var g = new THREE.Group();
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x2f8a4a, roughness: 0.8, flatShading: true, side: THREE.DoubleSide });
+    for (var i = 0; i < 6; i++) {
+      var blade = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.5, 3), leafMat);
+      var ang = (i / 6) * Math.PI * 2;
+      blade.position.set(Math.cos(ang) * 0.08, 0.22, Math.sin(ang) * 0.08);
+      blade.rotation.z = Math.cos(ang) * 0.5;
+      blade.rotation.x = Math.sin(ang) * 0.5;
+      g.add(blade);
+    }
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  function makeBush() {
+    var g = new THREE.Group();
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7a4a, roughness: 0.85, flatShading: true });
+    var mound = new THREE.Mesh(new THREE.SphereGeometry(0.28, 7, 6), leafMat);
+    mound.scale.set(1.3, 0.75, 1.3);
+    mound.position.y = 0.2;
+    g.add(mound);
+    var flowerColors = [0xff8fb0, 0xffd166, 0xffffff, 0xa98fe0];
+    for (var i = 0; i < 5; i++) {
+      var fc = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+      var fmat = new THREE.MeshStandardMaterial({ color: fc, emissive: fc, emissiveIntensity: 0.6 });
+      var flower = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 5), fmat);
+      var ang = Math.random() * Math.PI * 2;
+      var rad = 0.1 + Math.random() * 0.22;
+      flower.position.set(Math.cos(ang) * rad, 0.32 + Math.random() * 0.15, Math.sin(ang) * rad);
+      g.add(flower);
+    }
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  function makeMushroom() {
+    var g = new THREE.Group();
+    var stemMat = new THREE.MeshStandardMaterial({ color: 0xf5ead0, roughness: 0.7, flatShading: true });
+    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.18, 6), stemMat);
+    stem.position.y = 0.09;
+    g.add(stem);
+    var capColor = [0xe0546a, 0xffd166, 0x8f7fe0][Math.floor(Math.random() * 3)];
+    var capMat = new THREE.MeshStandardMaterial({ color: capColor, roughness: 0.7, flatShading: true });
+    var cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), capMat);
+    cap.position.y = 0.18;
+    g.add(cap);
+    var dotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+    for (var i = 0; i < 3; i++) {
+      var dot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 5), dotMat);
+      var a = Math.random() * Math.PI * 2, r = 0.06 + Math.random() * 0.04;
+      dot.position.set(Math.cos(a) * r, 0.22 + Math.random() * 0.03, Math.sin(a) * r);
+      g.add(dot);
+    }
+    g.scale.setScalar(VILLAGE_SCALE);
+    return g;
+  }
+
+  var LAKE_SPOT = { theta: 1.35, phi: 2.4 };
+  var LAKE_ANGULAR_R = 0.4;
+  var MOUNTAIN_SPOTS = [
+    { theta: 0.5, phi: 0.55, scale: 1.6 },
+    { theta: 2.4, phi: 4.15, scale: 1.3 },
+    { theta: 1.05, phi: 5.55, scale: 1.15 }
+  ];
+  var MOUNTAIN_ANGULAR_R = 0.32;
+  var WATERFALL_SPOT = { theta: 0.95, phi: 2.55 };
+  var WATERFALL_ANGULAR_R = 0.22;
+  var OCEAN_SPOT = { theta: 1.9, phi: 1.0 };
+  var OCEAN_ANGULAR_R = 0.85;
+  var RAINFOREST_SPOT = { theta: 1.7, phi: 5.0 };
+  var RAINFOREST_ANGULAR_R = 0.55;
+
+  placeFlatOnSphere(makeLake(LAKE_ANGULAR_R), LAKE_SPOT.theta, LAKE_SPOT.phi);
+  placeCapOnSphere(makeOcean(OCEAN_ANGULAR_R), OCEAN_SPOT.theta, OCEAN_SPOT.phi);
+  MOUNTAIN_SPOTS.forEach(function (m) {
+    placeOnSphere(makeMountain(m.scale), m.theta, m.phi);
+  });
+  placeOnSphere(makeMountain(0.85), WATERFALL_SPOT.theta, WATERFALL_SPOT.phi);
+
+  var villagePoints = fibonacciSphere(220);
+  var houseColor = 0;
+  villagePoints.forEach(function (pt, idx) {
+    if (angularDist(pt, LAKE_SPOT) < LAKE_ANGULAR_R) return;
+    if (angularDist(pt, WATERFALL_SPOT) < WATERFALL_ANGULAR_R) return;
+    if (angularDist(pt, OCEAN_SPOT) < OCEAN_ANGULAR_R) return;
+    var nearMountain = MOUNTAIN_SPOTS.some(function (m) { return angularDist(pt, m) < MOUNTAIN_ANGULAR_R; });
+    if (nearMountain) return;
+
+    if (angularDist(pt, RAINFOREST_SPOT) < RAINFOREST_ANGULAR_R) {
+      var jr = Math.random();
+      placeOnSphere(jr < 0.6 ? makeJungleTree() : makeFern(), pt.theta, pt.phi);
+      if (Math.random() < 0.7) {
+        placeOnSphere(makeFern(), pt.theta + (Math.random() - 0.5) * 0.04, pt.phi + (Math.random() - 0.5) * 0.04);
+      }
+      return;
+    }
+
+    var cycle = idx % 5;
+    if (cycle === 0 || cycle === 1) {
+      placeOnSphere(makeHouse(houseColor++, Math.random() < 0.25), pt.theta, pt.phi);
+      if (Math.random() < 0.55) {
+        placeOnSphere(makeBush(), pt.theta + (Math.random() - 0.5) * 0.05, pt.phi + (Math.random() - 0.5) * 0.05);
+      }
+    } else if (cycle === 2) {
+      placeOnSphere(makeTree(), pt.theta, pt.phi);
+    } else if (cycle === 3 && Math.random() < 0.55) {
+      placeOnSphere(makeStreetlamp(), pt.theta, pt.phi);
+    } else if (cycle === 4) {
+      var r = Math.random();
+      placeOnSphere(r < 0.4 ? makeTree() : (r < 0.75 ? makeBush() : makeMushroom()), pt.theta, pt.phi);
+    }
+  });
+
+  /* ---------- 폭포 ---------- */
+
+  var wfNormal = sphereNormal(WATERFALL_SPOT.theta, WATERFALL_SPOT.phi);
+  var WATERFALL_TOP = wfNormal.clone().multiplyScalar(PLANET_RADIUS + 3.3);
+  var WATERFALL_BASE = wfNormal.clone().multiplyScalar(PLANET_RADIUS + 0.15);
+
+  var waterfallMat = new THREE.MeshStandardMaterial({
+    color: 0xcdeef7, emissive: 0x8fd6ec, emissiveIntensity: 0.45,
+    roughness: 0.25, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false
+  });
+  var waterfallMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.5, WATERFALL_TOP.distanceTo(WATERFALL_BASE), 8, 6, true),
+    waterfallMat
+  );
+  waterfallMesh.position.copy(WATERFALL_TOP).add(WATERFALL_BASE).multiplyScalar(0.5);
+  waterfallMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), wfNormal);
+  planetGroup.add(waterfallMesh);
+
+  var dropMat = new THREE.MeshBasicMaterial({ color: 0xe8f8ff, transparent: true, opacity: 0.85 });
+  var waterDrops = [];
+  for (var wd = 0; wd < 10; wd++) {
+    var drop = new THREE.Mesh(new THREE.SphereGeometry(0.06 + Math.random() * 0.05, 5, 5), dropMat);
+    drop.userData.t = Math.random();
+    drop.userData.speed = 0.45 + Math.random() * 0.3;
+    planetGroup.add(drop);
+    waterDrops.push(drop);
+  }
+
+  function updateWaterfall(dt) {
+    waterDrops.forEach(function (drop) {
+      drop.userData.t += drop.userData.speed * dt;
+      if (drop.userData.t > 1) drop.userData.t -= 1;
+      drop.position.lerpVectors(WATERFALL_TOP, WATERFALL_BASE, drop.userData.t);
+    });
+  }
+
+  /* ---------- 날아다니는 보석 ---------- */
+
+  function makeGem(color) {
+    var mat = new THREE.MeshStandardMaterial({
+      color: color, emissive: color, emissiveIntensity: 0.85,
+      roughness: 0.15, metalness: 0.6, flatShading: true
+    });
+    return new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), mat);
+  }
+
+  var GEM_COLORS = [0xff6fa0, 0x6fe0c0, 0xffd166, 0x8f7fe0, 0x5ec8ff];
+  var GEM_ALT_MIN = PLANET_RADIUS + 6;
+  var GEM_ALT_MAX = PLANET_RADIUS + 20;
+  var gems = [];
+  for (var gi = 0; gi < 16; gi++) {
+    var gem = makeGem(GEM_COLORS[gi % GEM_COLORS.length]);
+    gem.userData.theta = Math.random() * Math.PI;
+    gem.userData.phi = Math.random() * Math.PI * 2;
+    gem.userData.alt = GEM_ALT_MIN + Math.random() * (GEM_ALT_MAX - GEM_ALT_MIN);
+    gem.userData.speed = (0.02 + Math.random() * 0.03) * (Math.random() < 0.5 ? 1 : -1);
+    gem.userData.bobPhase = Math.random() * Math.PI * 2;
+    gem.userData.spin = 0.6 + Math.random() * 0.8;
+    scene.add(gem);
+    gems.push(gem);
+  }
+
+  function updateGems(t, dt) {
+    gems.forEach(function (gem) {
+      gem.userData.phi += gem.userData.speed * dt;
+      var normal = sphereNormal(gem.userData.theta, gem.userData.phi);
+      var bob = Math.sin(t * 0.6 + gem.userData.bobPhase) * 0.8;
+      gem.position.copy(normal).multiplyScalar(gem.userData.alt + bob).add(PLANET_CENTER);
+      gem.rotation.y += dt * gem.userData.spin;
+      gem.rotation.x += dt * gem.userData.spin * 0.6;
+    });
+  }
+
+  /* ---------- 떠다니는 구름 ---------- */
+
+  function makeCloud() {
+    var g = new THREE.Group();
+    var mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.42, roughness: 1,
+      flatShading: true, depthWrite: false
+    });
+    var puffCount = 3 + Math.floor(Math.random() * 3);
+    for (var i = 0; i < puffCount; i++) {
+      var puff = new THREE.Mesh(new THREE.SphereGeometry(0.6 + Math.random() * 0.55, 7, 6), mat);
+      puff.position.set((i - puffCount / 2) * 0.65 + (Math.random() - 0.5) * 0.25, (Math.random() - 0.5) * 0.25, (Math.random() - 0.5) * 0.35);
+      g.add(puff);
+    }
+    return g;
+  }
+
+  var CLOUD_ALT = PLANET_RADIUS + 5;
+  var clouds = [];
+  for (var ci = 0; ci < 14; ci++) {
+    var cloud = makeCloud();
+    cloud.userData.theta = 0.35 + Math.random() * (Math.PI - 0.7);
+    cloud.userData.phi = Math.random() * Math.PI * 2;
+    cloud.userData.speed = (0.012 + Math.random() * 0.02) * (Math.random() < 0.5 ? 1 : -1);
+    cloud.userData.bobPhase = Math.random() * Math.PI * 2;
+    scene.add(cloud);
+    clouds.push(cloud);
+  }
+
+  function updateClouds(t, dt) {
+    clouds.forEach(function (cloud) {
+      cloud.userData.phi += cloud.userData.speed * dt;
+      var normal = sphereNormal(cloud.userData.theta, cloud.userData.phi);
+      var bob = Math.sin(t * 0.4 + cloud.userData.bobPhase) * 0.6;
+      cloud.position.copy(normal).multiplyScalar(CLOUD_ALT + bob).add(PLANET_CENTER);
+      cloud.rotation.y += dt * 0.03;
+    });
+  }
+
+  /* ---------- 오로라 ---------- */
+
+  function makeAurora(hueA, hueB, width, height) {
+    var geo = new THREE.PlaneGeometry(width, height, 24, 1);
+    var colorTop = new THREE.Color(hueA);
+    var colorBottom = new THREE.Color(hueB);
+    var posAttr = geo.attributes.position;
+    var colors = [];
+    for (var i = 0; i < posAttr.count; i++) {
+      var v = posAttr.getY(i) / height + 0.5;
+      var c = colorBottom.clone().lerp(colorTop, v);
+      colors.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    var mat = new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.4,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.basePos = posAttr.array.slice();
+    mesh.userData.seed = Math.random() * 10;
+    return mesh;
+  }
+
+  var AURORA_RADIUS = ORBIT_MAX + 22;
+  var auroras = [];
+  function spawnAurora(theta, phi, hueA, hueB, scale) {
+    var mesh = makeAurora(hueA, hueB, 26, 9);
+    mesh.scale.setScalar(scale);
+    var normal = sphereNormal(theta, phi);
+    mesh.position.copy(normal).multiplyScalar(AURORA_RADIUS).add(PLANET_CENTER);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    mesh.rotateZ(Math.random() * Math.PI * 2);
+    scene.add(mesh);
+    auroras.push(mesh);
+  }
+  spawnAurora(0.85, 1.1, 0x5EC8D8, 0xA98FE0, 1.6);
+  spawnAurora(1.35, 3.9, 0x8FD6A6, 0x5EC8D8, 1.3);
+  spawnAurora(0.7, 5.4, 0xA98FE0, 0x6fe0c0, 1.1);
+
+  function updateAurora(t) {
+    auroras.forEach(function (mesh) {
+      var pos = mesh.geometry.attributes.position;
+      var base = mesh.userData.basePos;
+      for (var i = 0; i < pos.count; i++) {
+        var bx = base[i * 3], bz = base[i * 3 + 2];
+        pos.setZ(i, bz + Math.sin(t * 0.6 + bx * 0.4 + mesh.userData.seed) * 0.9);
+      }
+      pos.needsUpdate = true;
+      mesh.material.opacity = 0.08 + 0.4 * (1 - currentDayFactor);
+    });
+  }
+
+  /* ---------- 별똥별 ---------- */
+
+  var shootingStars = [];
+  var nextShootIn = 3 + Math.random() * 4;
+
+  function spawnShootingStar() {
+    var radius = ORBIT_MAX + 30 + Math.random() * 20;
+    var start = sphereNormal(Math.random() * Math.PI, Math.random() * Math.PI * 2).multiplyScalar(radius).add(PLANET_CENTER);
+    var dirRand = new THREE.Vector3((Math.random() - 0.5), -(0.4 + Math.random() * 0.4), (Math.random() - 0.5)).normalize();
+    var mat = new THREE.MeshBasicMaterial({ color: 0xf5faff, transparent: true, opacity: 0.9 });
+    var mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.14, 3.2, 5, 1, true), mat);
+    mesh.position.copy(start);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirRand);
+    mesh.userData.vel = dirRand.multiplyScalar(55 + Math.random() * 25);
+    mesh.userData.life = 0;
+    mesh.userData.maxLife = 1.1 + Math.random() * 0.6;
+    scene.add(mesh);
+    shootingStars.push(mesh);
+  }
+
+  function updateShootingStars(dt) {
+    nextShootIn -= dt;
+    if (nextShootIn <= 0 && (1 - currentDayFactor) > 0.4) {
+      spawnShootingStar();
+      nextShootIn = 2.5 + Math.random() * 5;
+    }
+    for (var i = shootingStars.length - 1; i >= 0; i--) {
+      var s = shootingStars[i];
+      s.userData.life += dt;
+      s.position.addScaledVector(s.userData.vel, dt);
+      var fade = Math.max(0, 1 - s.userData.life / s.userData.maxLife);
+      s.material.opacity = fade * (1 - currentDayFactor);
+      if (s.userData.life >= s.userData.maxLife) {
+        scene.remove(s);
+        s.geometry.dispose();
+        s.material.dispose();
+        shootingStars.splice(i, 1);
+      }
+    }
+  }
+
+  /* ---------- 떠다니는 등불 ---------- */
+
+  function makeLantern() {
+    var g = new THREE.Group();
+    var paperMat = new THREE.MeshStandardMaterial({
+      color: 0xffb066, emissive: 0xff9a3c, emissiveIntensity: 1.1,
+      roughness: 0.6, flatShading: true, transparent: true, opacity: 0.92
+    });
+    var body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.32, 8), paperMat);
+    g.add(body);
+    var rimMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.8 });
+    var rimTop = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.015, 6, 10), rimMat);
+    rimTop.rotation.x = Math.PI / 2;
+    rimTop.position.y = 0.16;
+    g.add(rimTop);
+    var rimBottom = rimTop.clone();
+    rimBottom.position.y = -0.16;
+    rimBottom.scale.setScalar(1.05);
+    g.add(rimBottom);
+    return g;
+  }
+
+  var lanterns = [];
+  for (var li = 0; li < 12; li++) {
+    var lantern = makeLantern();
+    lantern.userData.theta = Math.random() * Math.PI;
+    lantern.userData.phi = Math.random() * Math.PI * 2;
+    lantern.userData.alt = PLANET_RADIUS + 8 + Math.random() * 14;
+    lantern.userData.speed = (0.015 + Math.random() * 0.02) * (Math.random() < 0.5 ? 1 : -1);
+    lantern.userData.bobPhase = Math.random() * Math.PI * 2;
+    scene.add(lantern);
+    lanterns.push(lantern);
+  }
+
+  function updateLanterns(t, dt) {
+    lanterns.forEach(function (lantern) {
+      lantern.userData.phi += lantern.userData.speed * dt;
+      var normal = sphereNormal(lantern.userData.theta, lantern.userData.phi);
+      var bob = Math.sin(t * 0.5 + lantern.userData.bobPhase) * 1.0;
+      lantern.position.copy(normal).multiplyScalar(lantern.userData.alt + bob).add(PLANET_CENTER);
+      lantern.rotation.y += dt * 0.15;
+    });
+  }
+
+  /* ---------- 고래 ---------- */
+
+  var bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x8fd6ec, emissive: 0x4fa9cc, emissiveIntensity: 0.3,
+    roughness: 0.42, metalness: 0.08, flatShading: true
+  });
+  var bellyMat = new THREE.MeshStandardMaterial({
+    color: 0xf5fbff, emissive: 0xd6ecf5, emissiveIntensity: 0.2,
+    roughness: 0.5, metalness: 0.04, flatShading: true
+  });
+  var finMat = new THREE.MeshStandardMaterial({
+    color: 0x6fa9d4, emissive: 0x3f7fac, emissiveIntensity: 0.26,
+    roughness: 0.48, flatShading: true, side: THREE.DoubleSide
+  });
+  var eyeMat = new THREE.MeshStandardMaterial({ color: 0x14202e, roughness: 0.25, metalness: 0.25 });
+  var eyeShineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  var whale = new THREE.Group();
+
+  var body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), bodyMat);
+  body.scale.set(1.9, 1, 1.05);
+  whale.add(body);
+
+  var belly = new THREE.Mesh(
+    new THREE.SphereGeometry(1.015, 16, 12, 0, Math.PI * 2, Math.PI * 0.52, Math.PI * 0.48),
+    bellyMat
+  );
+  belly.scale.copy(body.scale);
+  whale.add(belly);
+
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 12), bodyMat);
+  head.position.set(1.55, 0.05, 0);
+  head.scale.set(1, 0.9, 0.95);
+  whale.add(head);
+
+  var melon = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), bodyMat);
+  melon.position.set(0.3, 0.34, 0);
+  melon.scale.set(0.82, 0.78, 0.82);
+  head.add(melon);
+
+  var beak = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), bellyMat);
+  beak.position.set(0.68, -0.2, 0);
+  beak.scale.set(1.05, 0.6, 0.66);
+  head.add(beak);
+
+  function makeEye(sign) {
+    var g = new THREE.Group();
+    var socket = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
+    g.add(socket);
+    var shine = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), eyeShineMat);
+    shine.position.set(0.05, 0.05, sign * 0.05);
+    g.add(shine);
+    g.position.set(0.4, 0.12, sign * 0.5);
+    return g;
+  }
+  head.add(makeEye(1));
+  head.add(makeEye(-1));
+
+  var tailStalk = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.9, 8), bodyMat);
+  tailStalk.position.set(-1.85, 0, 0);
+  tailStalk.rotation.z = Math.PI / 2;
+  whale.add(tailStalk);
+
+  var flukeGroup = new THREE.Group();
+  flukeGroup.position.set(-2.15, 0, 0);
+  whale.add(flukeGroup);
+  function makeFluke(sign) {
+    var f = new THREE.Mesh(new THREE.ConeGeometry(0.54, 0.09, 5), finMat);
+    f.rotation.z = Math.PI / 2;
+    f.rotation.y = sign * 0.5;
+    f.position.z = sign * 0.19;
+    return f;
+  }
+  flukeGroup.add(makeFluke(1));
+  flukeGroup.add(makeFluke(-1));
+
+  var dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6, 5), finMat);
+  dorsal.scale.set(0.5, 1, 1);
+  dorsal.position.set(-0.18, 0.97, 0);
+  dorsal.rotation.x = -0.22;
+  dorsal.rotation.z = -0.14;
+  whale.add(dorsal);
+
+  function makePectoral(sign) {
+    var fin = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.85, 5), finMat);
+    fin.scale.set(1, 1, 0.5);
+    fin.position.set(0.55, -0.55, sign * 0.75);
+    fin.rotation.z = Math.PI * 0.42;
+    fin.rotation.x = sign * 0.5;
+    return fin;
+  }
+  var pecL = makePectoral(1);
+  var pecR = makePectoral(-1);
+  whale.add(pecL);
+  whale.add(pecR);
+
+  whale.scale.setScalar(0.85);
+  scene.add(whale);
+
+  /* ---------- 따라다니는 작은 물고기 ---------- */
+
+  var fishMat = new THREE.MeshStandardMaterial({ color: 0xbfe9e0, emissive: 0x4fa9a0, emissiveIntensity: 0.4, roughness: 0.5, flatShading: true });
+  function makeFish() {
+    var f = new THREE.Group();
+    var b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 5), fishMat);
+    b.rotation.z = -Math.PI / 2;
+    f.add(b);
+    var tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.1, 4), fishMat);
+    tail.position.x = -0.19;
+    tail.rotation.z = Math.PI / 2;
+    f.add(tail);
+    f.userData.tail = tail;
+    scene.add(f);
+    return f;
+  }
+  var fishes = [];
+  for (var fi = 0; fi < 6; fi++) {
+    var fish = makeFish();
+    fish.userData.phase = Math.random() * Math.PI * 2;
+    fish.userData.speed = 0.7 + Math.random() * 0.5;
+    fish.userData.radius = 1.4 + Math.random() * 0.9;
+    fish.userData.height = (Math.random() - 0.5) * 1.4;
+    fish.userData.lag = Math.random() * 2;
+    fishes.push(fish);
+  }
+
+  /* ---------- 기포 ---------- */
+
+  var bubbles = [];
+  var bubbleGeo = new THREE.SphereGeometry(1, 6, 6);
+  for (var i = 0; i < 40; i++) {
+    var mat = new THREE.MeshBasicMaterial({ color: 0xdff6ff, transparent: true, opacity: 0.15 + Math.random() * 0.15 });
+    var b2 = new THREE.Mesh(bubbleGeo, mat);
+    b2.scale.setScalar(0.04 + Math.random() * 0.08);
+    b2.position.set((Math.random() - 0.5) * 90, PLANET_CENTER.y - PLANET_RADIUS + Math.random() * (CEILING_Y - (PLANET_CENTER.y - PLANET_RADIUS)), (Math.random() - 0.5) * 90);
+    b2.userData.speed = 0.4 + Math.random() * 0.6;
+    scene.add(b2);
+    bubbles.push(b2);
+  }
+
+  /* ---------- 조작 ---------- */
+
+  var keys = {};
+  window.addEventListener('keydown', function (e) {
+    keys[e.key.toLowerCase()] = true;
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'shift'].indexOf(e.key.toLowerCase()) !== -1) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', function (e) {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  var camOrbitYaw = 0;
+  var camOrbitPitch = 0;
+  var touchLook = null;
+  renderer.domElement.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) {
+      touchLook = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+    }
+  }, { passive: true });
+  renderer.domElement.addEventListener('touchmove', function (e) {
+    if (e.touches.length === 2 && touchLook) {
+      var x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      var y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      camOrbitYaw -= (x - touchLook.x) * 0.006;
+      camOrbitPitch = Math.max(-1.1, Math.min(1.1, camOrbitPitch - (y - touchLook.y) * 0.006));
+      touchLook = { x: x, y: y };
+      e.preventDefault();
+    }
+  }, { passive: false });
+  renderer.domElement.addEventListener('touchend', function (e) {
+    if (e.touches.length < 2) touchLook = null;
+  });
+
+  var ACCEL = 7, MAX_SPEED = 9.5, REVERSE_MAX = 3.2, DRAG_IDLE = 1.6, DRAG_ACTIVE = 0.25;
+  var TURN_RATE = 1.5, MAX_PITCH = 0.55, PITCH_SMOOTH = 3, MAX_BANK = 0.5, BANK_SMOOTH = 4;
+  var CAM_DIST = 10.5, CAM_HEIGHT = 6.2;
+
+  var pos = new THREE.Vector3(0, 12, PLANET_CENTER.z + PLANET_RADIUS + 14);
+  var flightForward = new THREE.Vector3(0, 0, -1);
+  var pitch = 0;
+  var speed = 0;
+  var bank = 0;
+
+  var camLook = pos.clone();
+  var clock = new THREE.Clock();
+
+  function animate() {
+    var dt = Math.min(clock.getDelta(), 0.05);
+    var t = clock.getElapsedTime();
+
+    var fwd = (keys['w'] || keys['arrowup']) ? 1 : 0;
+    var back = (keys['s'] || keys['arrowdown']) ? 1 : 0;
+    var left = (keys['a'] || keys['arrowleft']) ? 1 : 0;
+    var right = (keys['d'] || keys['arrowright']) ? 1 : 0;
+    var up = keys[' '] ? 1 : 0;
+    var down = keys['shift'] ? 1 : 0;
+
+    var accelInput = fwd ? 1 : (back ? -0.6 : 0);
+    speed += accelInput * ACCEL * dt;
+    speed -= speed * (accelInput === 0 ? DRAG_IDLE : DRAG_ACTIVE) * dt;
+    speed = Math.max(-REVERSE_MAX, Math.min(MAX_SPEED, speed));
+
+    var turnInput = left - right;
+    var speedFactor = 0.4 + 0.6 * Math.min(Math.abs(speed) / MAX_SPEED, 1);
+
+    var localUp = pos.clone().sub(planetGroup.position).normalize();
+    flightForward.sub(localUp.clone().multiplyScalar(flightForward.dot(localUp))).normalize();
+    if (turnInput !== 0) {
+      flightForward.applyAxisAngle(localUp, turnInput * TURN_RATE * dt * speedFactor);
+    }
+
+    var pitchInput = up - down;
+    var pitchTarget = pitchInput * MAX_PITCH;
+    pitch += (pitchTarget - pitch) * Math.min(dt * PITCH_SMOOTH, 1);
+
+    bank += (-turnInput * MAX_BANK - bank) * Math.min(dt * BANK_SMOOTH, 1);
+
+    var dir = flightForward.clone().multiplyScalar(Math.cos(pitch)).add(localUp.clone().multiplyScalar(Math.sin(pitch)));
+
+    var minClearance = PLANET_RADIUS + 4;
+    var relPos = pos.clone().sub(planetGroup.position);
+    var currentRadius = relPos.length();
+
+    var tangentSpeed = speed * Math.cos(pitch);
+    if (tangentSpeed !== 0 && currentRadius > 0.001) {
+      var rotAxis = new THREE.Vector3().crossVectors(localUp, flightForward);
+      if (rotAxis.lengthSq() > 1e-8) {
+        rotAxis.normalize();
+        relPos.applyAxisAngle(rotAxis, (tangentSpeed * dt) / currentRadius);
+      }
+    }
+
+    var radialSpeed = speed * Math.sin(pitch);
+    var newRadius = clamp(currentRadius + radialSpeed * dt, minClearance, ORBIT_MAX);
+    pos.copy(planetGroup.position).add(relPos.setLength(newRadius));
+
+    planetGroup.rotation.y += ROTATE_SPEED * dt;
+
+    var whaleUp = localUp.clone().sub(dir.clone().multiplyScalar(dir.dot(localUp))).normalize();
+    var whaleRight = new THREE.Vector3().crossVectors(dir, whaleUp).normalize();
+    whale.position.copy(pos);
+    whale.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(dir, whaleUp, whaleRight));
+    whale.rotateX(bank + Math.sin(t * (3 + Math.abs(speed))) * 0.03);
+
+    var tailFreq = 2.6 + Math.abs(speed) * 0.45;
+    var tailWave = Math.sin(t * tailFreq);
+    tailStalk.rotation.y = tailWave * (0.09 + Math.abs(speed) * 0.011);
+    flukeGroup.rotation.y = Math.sin(t * tailFreq - 0.6) * (0.5 + Math.abs(speed) * 0.06);
+    pecL.rotation.x = 0.5 + Math.sin(t * 2.4) * 0.15;
+    pecR.rotation.x = -0.5 - Math.sin(t * 2.4 + 0.4) * 0.15;
+
+    fishes.forEach(function (fish) {
+      var ft = t * fish.userData.speed + fish.userData.phase;
+      var spread = fish.userData.radius;
+      var target = new THREE.Vector3(
+        pos.x + Math.cos(ft) * spread,
+        pos.y + fish.userData.height + Math.sin(ft * 1.3) * 0.12,
+        pos.z + Math.sin(ft) * spread * 0.9
+      );
+      fish.position.lerp(target, Math.min(dt * 3.2, 1));
+      var fahead = new THREE.Vector3(
+        pos.x + Math.cos(ft + 0.3) * spread,
+        target.y,
+        pos.z + Math.sin(ft + 0.3) * spread * 0.9
+      );
+      fish.lookAt(fahead);
+      fish.userData.tail.rotation.y = Math.sin(t * 9 + fish.userData.lag) * 0.6;
+    });
+
+    bubbles.forEach(function (bub) {
+      bub.position.y += bub.userData.speed * dt;
+      if (bub.position.y > CEILING_Y + 2) {
+        bub.position.y = PLANET_CENTER.y - PLANET_RADIUS;
+        bub.position.x = (Math.random() - 0.5) * 90;
+        bub.position.z = (Math.random() - 0.5) * 90;
+      }
+    });
+
+    updateClouds(t, dt);
+    updateWaterfall(dt);
+    updateGems(t, dt);
+    updateLanterns(t, dt);
+    updateSun();
+    updateAurora(t);
+    updateShootingStars(dt);
+
+    if (!touchLook) {
+      camOrbitYaw *= Math.max(0, 1 - dt * 1.2);
+      camOrbitPitch *= Math.max(0, 1 - dt * 1.2);
+    }
+
+    var baseOffset = dir.clone().multiplyScalar(-CAM_DIST).add(whaleUp.clone().multiplyScalar(CAM_HEIGHT));
+    baseOffset.applyAxisAngle(whaleUp, camOrbitYaw);
+    var orbitRight = new THREE.Vector3().crossVectors(baseOffset, whaleUp).normalize();
+    baseOffset.applyAxisAngle(orbitRight, camOrbitPitch);
+
+    var orbitMag = Math.min(1, (Math.abs(camOrbitYaw) + Math.abs(camOrbitPitch)) * 1.2);
+    var desiredCamPos = pos.clone().add(baseOffset);
+
+    var camToCenter = planetGroup.position.clone().sub(desiredCamPos);
+    var camDist = camToCenter.length();
+    var horizonDir;
+    if (camDist > PLANET_RADIUS + 0.01) {
+      var beta = Math.asin(clamp(PLANET_RADIUS / camDist, -1, 1));
+      var cNorm = camToCenter.clone().normalize();
+      var tiltAxis = new THREE.Vector3().crossVectors(cNorm, whaleUp);
+      if (tiltAxis.lengthSq() > 1e-8) {
+        tiltAxis.normalize();
+        var candidateA = cNorm.clone().applyAxisAngle(tiltAxis, beta);
+        var candidateB = cNorm.clone().applyAxisAngle(tiltAxis, -beta);
+        horizonDir = candidateA.dot(dir) > candidateB.dot(dir) ? candidateA : candidateB;
+      } else {
+        horizonDir = dir.clone();
+      }
+    } else {
+      horizonDir = dir.clone();
+    }
+
+    var desiredLookAt = desiredCamPos.clone().add(horizonDir.multiplyScalar(20));
+    desiredLookAt.lerp(pos, orbitMag);
+
+    camera.up.copy(whaleUp);
+    camera.position.copy(desiredCamPos);
+    camLook.copy(desiredLookAt);
+    camera.lookAt(camLook);
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+</script>
+
+</body>
+</html>
