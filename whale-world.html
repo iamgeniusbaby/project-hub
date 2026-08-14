@@ -173,10 +173,6 @@
   planetGroup.position.copy(PLANET_CENTER);
   scene.add(planetGroup);
 
-  var groundMat = new THREE.MeshStandardMaterial({ color: 0x6fc98a, roughness: 0.9, flatShading: true });
-  var ground = new THREE.Mesh(new THREE.SphereGeometry(PLANET_RADIUS, 40, 30), groundMat);
-  planetGroup.add(ground);
-
   function sphereNormal(theta, phi) {
     return new THREE.Vector3(
       Math.sin(theta) * Math.cos(phi),
@@ -185,9 +181,125 @@
     );
   }
 
+  function angularDist(a, b) {
+    return sphereNormal(a.theta, a.phi).angleTo(sphereNormal(b.theta, b.phi));
+  }
+
+  /* ---- 물 구역 (지형이 평평해지는 곳) ---- */
+  var LAKE_SPOT = { theta: 1.35, phi: 2.4 };
+  var LAKE_ANGULAR_R = 0.4;
+  var MOUNTAIN_SPOTS = [
+    { theta: 0.5, phi: 0.55, scale: 1.6 },
+    { theta: 2.4, phi: 4.15, scale: 1.3 },
+    { theta: 1.05, phi: 5.55, scale: 1.15 }
+  ];
+  var MOUNTAIN_ANGULAR_R = 0.32;
+  var WATERFALL_SPOT = { theta: 0.95, phi: 2.55 };
+  var WATERFALL_ANGULAR_R = 0.22;
+  var OCEAN_SPOT = { theta: 1.9, phi: 1.0 };
+  var OCEAN_ANGULAR_R = 0.85;
+  var RAINFOREST_SPOT = { theta: 1.7, phi: 5.0 };
+  var RAINFOREST_ANGULAR_R = 0.55;
+
+  var WATER_SPOTS = [
+    { center: LAKE_SPOT, radius: LAKE_ANGULAR_R, feather: 0.14 },
+    { center: OCEAN_SPOT, radius: OCEAN_ANGULAR_R, feather: 0.18 },
+    { center: WATERFALL_SPOT, radius: WATERFALL_ANGULAR_R, feather: 0.1 }
+  ];
+
+  function waterMask(theta, phi) {
+    var pt = { theta: theta, phi: phi };
+    var m = 1;
+    for (var i = 0; i < WATER_SPOTS.length; i++) {
+      var w = WATER_SPOTS[i];
+      var d = angularDist(pt, w.center);
+      var t = clamp((d - w.radius) / w.feather, 0, 1);
+      var s = t * t * (3 - 2 * t);
+      m = Math.min(m, s);
+    }
+    return m;
+  }
+
+  /* ---- 지형 노이즈 (기복과 디테일) ---- */
+  function hash3(x, y, z) {
+    var s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+    return s - Math.floor(s);
+  }
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function valueNoise3D(x, y, z) {
+    var xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    var xf = x - xi, yf = y - yi, zf = z - zi;
+    var u = fade(xf), v = fade(yf), w = fade(zf);
+    var c000 = hash3(xi, yi, zi), c100 = hash3(xi + 1, yi, zi);
+    var c010 = hash3(xi, yi + 1, zi), c110 = hash3(xi + 1, yi + 1, zi);
+    var c001 = hash3(xi, yi, zi + 1), c101 = hash3(xi + 1, yi, zi + 1);
+    var c011 = hash3(xi, yi + 1, zi + 1), c111 = hash3(xi + 1, yi + 1, zi + 1);
+    var x00 = c000 + (c100 - c000) * u, x10 = c010 + (c110 - c010) * u;
+    var x01 = c001 + (c101 - c001) * u, x11 = c011 + (c111 - c011) * u;
+    var y0 = x00 + (x10 - x00) * v, y1 = x01 + (x11 - x01) * v;
+    return y0 + (y1 - y0) * w;
+  }
+  function fbm3D(x, y, z, octaves, lacunarity, gain) {
+    var amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (var i = 0; i < octaves; i++) {
+      sum += amp * valueNoise3D(x * freq, y * freq, z * freq);
+      norm += amp;
+      amp *= gain;
+      freq *= lacunarity;
+    }
+    return sum / norm;
+  }
+
+  var TERRAIN_SEED = 11.7;
+  var TERRAIN_AMPLITUDE = 1.3;
+  function terrainHeight(theta, phi) {
+    var n = sphereNormal(theta, phi);
+    var base = fbm3D(n.x * 2.6 + TERRAIN_SEED, n.y * 2.6 + TERRAIN_SEED, n.z * 2.6 + TERRAIN_SEED, 5, 2.15, 0.52) * 2 - 1;
+    var ridgeN = fbm3D(n.x * 4.4 - TERRAIN_SEED, n.y * 4.4 - TERRAIN_SEED, n.z * 4.4 - TERRAIN_SEED, 3, 2.2, 0.5);
+    var ridge = 1 - Math.abs(ridgeN * 2 - 1);
+    var h = base * 0.7 + (ridge - 0.45) * 0.55;
+    return h * TERRAIN_AMPLITUDE * waterMask(theta, phi);
+  }
+  function getTerrainRadius(theta, phi) {
+    return PLANET_RADIUS + terrainHeight(theta, phi);
+  }
+
+  var COL_DEEP = new THREE.Color(0x3f6b4a);
+  var COL_MID = new THREE.Color(0x6fc98a);
+  var COL_HIGH = new THREE.Color(0x8a7a5f);
+  var COL_PEAK = new THREE.Color(0xf3f0e6);
+  function biomeColor(h) {
+    var t = clamp((h + 1.3) / 2.6, 0, 1);
+    if (t < 0.35) return COL_DEEP.clone().lerp(COL_MID, t / 0.35);
+    if (t < 0.7) return COL_MID.clone().lerp(COL_HIGH, (t - 0.35) / 0.35);
+    return COL_HIGH.clone().lerp(COL_PEAK, clamp((t - 0.7) / 0.3, 0, 1));
+  }
+
+  var groundGeo = new THREE.SphereGeometry(PLANET_RADIUS, 72, 48);
+  (function sculptGround() {
+    var posAttr = groundGeo.attributes.position;
+    var colors = new Float32Array(posAttr.count * 3);
+    var v3 = new THREE.Vector3();
+    for (var i = 0; i < posAttr.count; i++) {
+      v3.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i)).normalize();
+      var theta = Math.acos(clamp(v3.y, -1, 1));
+      var phi = Math.atan2(v3.z, v3.x);
+      var h = terrainHeight(theta, phi);
+      var r = PLANET_RADIUS + h;
+      posAttr.setXYZ(i, v3.x * r, v3.y * r, v3.z * r);
+      var col = biomeColor(h);
+      colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
+    }
+    groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    groundGeo.computeVertexNormals();
+  })();
+  var groundMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  var ground = new THREE.Mesh(groundGeo, groundMat);
+  planetGroup.add(ground);
+
   function placeOnSphere(obj, theta, phi) {
     var normal = sphereNormal(theta, phi);
-    obj.position.copy(normal).multiplyScalar(PLANET_RADIUS);
+    obj.position.copy(normal).multiplyScalar(getTerrainRadius(theta, phi));
     obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
     planetGroup.add(obj);
     return obj;
@@ -195,7 +307,7 @@
 
   function placeFlatOnSphere(obj, theta, phi) {
     var normal = sphereNormal(theta, phi);
-    obj.position.copy(normal).multiplyScalar(PLANET_RADIUS * 1.003);
+    obj.position.copy(normal).multiplyScalar(getTerrainRadius(theta, phi) + 0.06);
     obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
     planetGroup.add(obj);
     return obj;
@@ -214,10 +326,6 @@
       points.push({ theta: Math.acos(clamp(y, -1, 1)), phi: Math.atan2(z, x) });
     }
     return points;
-  }
-
-  function angularDist(a, b) {
-    return sphereNormal(a.theta, a.phi).angleTo(sphereNormal(b.theta, b.phi));
   }
 
   var HOUSE_COLORS = [0xb4553f, 0xc98a4b, 0x4f7a6b, 0x5a6f9e, 0x7a5a8f, 0xc9a24b, 0xd66a8e, 0x3f8f8a, 0xe0955a, 0x6a4f9e, 0x4f9e6a, 0xd94f4f];
@@ -326,7 +434,7 @@
   function makeLake(angularRadius) {
     var flatR = PLANET_RADIUS * Math.sin(angularRadius) * 1.1;
     var mat = new THREE.MeshStandardMaterial({ color: 0x2f7fb0, emissive: 0x1c4d6e, emissiveIntensity: 0.3, roughness: 0.2, metalness: 0.15, transparent: true, opacity: 0.92 });
-    return new THREE.Mesh(new THREE.CircleGeometry(flatR, 28), mat);
+    return new THREE.Mesh(new THREE.RingGeometry(0.001, flatR, 40, 8), mat);
   }
 
   function makeOcean(angularRadius) {
@@ -334,7 +442,7 @@
       color: 0x1c6a94, emissive: 0x0d3a56, emissiveIntensity: 0.25,
       roughness: 0.25, metalness: 0.12, transparent: true, opacity: 0.95
     });
-    return new THREE.Mesh(new THREE.SphereGeometry(PLANET_RADIUS * 1.004, 40, 24, 0, Math.PI * 2, 0, angularRadius), mat);
+    return new THREE.Mesh(new THREE.SphereGeometry(PLANET_RADIUS * 1.004, 48, 28, 0, Math.PI * 2, 0, angularRadius), mat);
   }
 
   function placeCapOnSphere(obj, theta, phi) {
@@ -418,23 +526,49 @@
     return g;
   }
 
-  var LAKE_SPOT = { theta: 1.35, phi: 2.4 };
-  var LAKE_ANGULAR_R = 0.4;
-  var MOUNTAIN_SPOTS = [
-    { theta: 0.5, phi: 0.55, scale: 1.6 },
-    { theta: 2.4, phi: 4.15, scale: 1.3 },
-    { theta: 1.05, phi: 5.55, scale: 1.15 }
-  ];
-  var MOUNTAIN_ANGULAR_R = 0.32;
-  var WATERFALL_SPOT = { theta: 0.95, phi: 2.55 };
-  var WATERFALL_ANGULAR_R = 0.22;
-  var OCEAN_SPOT = { theta: 1.9, phi: 1.0 };
-  var OCEAN_ANGULAR_R = 0.85;
-  var RAINFOREST_SPOT = { theta: 1.7, phi: 5.0 };
-  var RAINFOREST_ANGULAR_R = 0.55;
+  var lakeMesh = placeFlatOnSphere(makeLake(LAKE_ANGULAR_R), LAKE_SPOT.theta, LAKE_SPOT.phi);
+  var oceanMesh = placeCapOnSphere(makeOcean(OCEAN_ANGULAR_R), OCEAN_SPOT.theta, OCEAN_SPOT.phi);
 
-  placeFlatOnSphere(makeLake(LAKE_ANGULAR_R), LAKE_SPOT.theta, LAKE_SPOT.phi);
-  placeCapOnSphere(makeOcean(OCEAN_ANGULAR_R), OCEAN_SPOT.theta, OCEAN_SPOT.phi);
+  function makeRippleAnimator(mesh, amp, f1, f2, s1, s2, coordA, coordB) {
+    var posAttr = mesh.geometry.attributes.position;
+    var count = posAttr.count;
+    var baseDir = new Float32Array(count * 3);
+    var baseLen = new Float32Array(count);
+    var ca = new Float32Array(count), cb = new Float32Array(count);
+    var v = new THREE.Vector3();
+    for (var i = 0; i < count; i++) {
+      v.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+      var len = v.length() || 1;
+      baseLen[i] = len;
+      ca[i] = coordA(v);
+      cb[i] = coordB(v);
+      baseDir[i * 3] = v.x / len;
+      baseDir[i * 3 + 1] = v.y / len;
+      baseDir[i * 3 + 2] = v.z / len;
+    }
+    return function (t) {
+      for (var j = 0; j < count; j++) {
+        var wave = Math.sin(ca[j] * f1 + t * s1) * 0.5 + Math.sin(cb[j] * f2 - t * s2) * 0.5;
+        var r = baseLen[j] + wave * amp;
+        posAttr.setXYZ(j, baseDir[j * 3] * r, baseDir[j * 3 + 1] * r, baseDir[j * 3 + 2] * r);
+      }
+      posAttr.needsUpdate = true;
+      mesh.geometry.computeVertexNormals();
+    };
+  }
+
+  var animateLakeWaves = makeRippleAnimator(lakeMesh, 0.075, 1.1, 1.1, 1.5, 1.2,
+    function (v) { return v.x; }, function (v) { return v.y; });
+  var animateOceanWaves = makeRippleAnimator(oceanMesh, 0.055, 0.55, 0.6, 1.05, 0.85,
+    function (v) { return v.x; }, function (v) { return v.z; });
+
+  function updateWater(t) {
+    animateLakeWaves(t);
+    animateOceanWaves(t);
+    lakeMesh.material.emissiveIntensity = 0.28 + Math.sin(t * 1.4) * 0.08;
+    oceanMesh.material.emissiveIntensity = 0.22 + Math.sin(t * 1.0 + 1.4) * 0.08;
+  }
+
   MOUNTAIN_SPOTS.forEach(function (m) {
     placeOnSphere(makeMountain(m.scale), m.theta, m.phi);
   });
@@ -1008,6 +1142,7 @@
     });
 
     updateClouds(t, dt);
+    updateWater(t);
     updateWaterfall(dt);
     updateGems(t, dt);
     updateLanterns(t, dt);
